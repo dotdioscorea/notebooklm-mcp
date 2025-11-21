@@ -48,6 +48,24 @@ const PLACEHOLDER_SNIPPETS = [
   "creating answer",
   "generating answer",
   "wird erstellt",
+  "getting the context",
+  "finding key words",
+  "finding keywords",
+  "looking that up for you",
+  "looking that up",
+  "searching docs",
+  "searching the docs",
+  "searching your docs",
+  "checking the docs",
+  "pulling that up",
+  "gathering context",
+  "hang tight",
+  "one moment",
+  "getting the gist",
+  "reading full chapters",
+  "looking for answers",
+  "retrieving details",
+  "assessing relevance",
 ];
 
 // ============================================================================
@@ -73,6 +91,42 @@ function hashString(str: string): number {
 function isPlaceholder(text: string): boolean {
   const lower = text.toLowerCase();
   return PLACEHOLDER_SNIPPETS.some((snippet) => lower.includes(snippet));
+}
+
+/**
+ * Heuristic to detect short status/progress bubbles so we don't treat them as final answers.
+ */
+export function isLikelyStatusText(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+
+  // Very short, no sentence punctuation → likely a status bubble
+  const hasSentencePunctuation = /[.!?]/.test(t);
+  const wordCount = t.split(/\s+/).length;
+  if (!hasSentencePunctuation && wordCount <= 12) {
+    return true;
+  }
+
+  // Ellipsis-heavy or loader-style phrasing
+  if (t.includes("...") || t.endsWith("…")) {
+    return true;
+  }
+
+  // Generic progress verbs; intentionally broad to avoid brittleness
+  if (
+    /\b(getting|finding|looking|searching|checking|loading|preparing|gathering|pulling|fetching|working on|hang tight|one moment)\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+
+  // Short, single-clause, no commas/semicolons → low-content
+  if (t.length <= 80 && !/[;,]/.test(t) && !hasSentencePunctuation) {
+    return true;
+  }
+
+  return false;
 }
 
 // ============================================================================
@@ -228,6 +282,16 @@ export async function waitForLatestAnswer(
             log.debug("🔍 [DEBUG] Found placeholder, continuing...");
           }
           await page.waitForTimeout(250);
+          continue;
+        }
+
+        // Skip transient status/progress bubbles
+        if (isLikelyStatusText(normalized)) {
+          if (debug && pollCount % 5 === 0) {
+            log.debug("🔍 [DEBUG] Found status/progress bubble, continuing...");
+          }
+          knownHashes.add(hashString(normalized)); // avoid returning it later
+          await page.waitForTimeout(pollIntervalMs);
           continue;
         }
 
@@ -398,8 +462,15 @@ async function extractLatestText(
           }
 
           const text = await container.innerText();
-          if (text && text.trim() && !knownHashes.has(hashString(text.trim()))) {
-            return text.trim();
+          if (text && text.trim()) {
+            const trimmed = text.trim();
+            if (isPlaceholder(trimmed) || isLikelyStatusText(trimmed)) {
+              continue;
+            }
+            const hash = hashString(trimmed);
+            if (!knownHashes.has(hash)) {
+              return trimmed;
+            }
           }
         } catch {
           continue;
@@ -466,7 +537,11 @@ async function extractLatestText(
     });
 
     if (typeof fallbackText === "string" && fallbackText.trim()) {
-      return fallbackText.trim();
+      const trimmed = fallbackText.trim();
+      if (isPlaceholder(trimmed) || isLikelyStatusText(trimmed)) {
+        return null;
+      }
+      return trimmed;
     }
   } catch {
     // Ignore evaluation errors
