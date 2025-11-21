@@ -59,6 +59,7 @@ const PLACEHOLDER_SNIPPETS = [
   "checking the docs",
   "pulling that up",
   "gathering context",
+  "gathering the facts",
   "hang tight",
   "one moment",
   "getting the gist",
@@ -66,6 +67,11 @@ const PLACEHOLDER_SNIPPETS = [
   "looking for answers",
   "retrieving details",
   "assessing relevance",
+  "sifting through pages",
+  "checking the scope",
+  "examining the specifics",
+  "opening your notes",
+  "consulting your sources",
 ];
 
 // ============================================================================
