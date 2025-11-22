@@ -69,7 +69,7 @@ export class NotebookLibrary {
 
     if (hasConfig) {
       // Create first entry from CONFIG
-      const id = this.generateId(CONFIG.notebookDescription);
+      const id = this.generateId(CONFIG.notebookDescription, notebooks);
       notebooks.push({
         id,
         url: CONFIG.notebookUrl,
@@ -114,17 +114,19 @@ export class NotebookLibrary {
   /**
    * Generate a unique ID from a string (slug format)
    */
-  private generateId(name: string): string {
+  private generateId(name: string, notebooks: NotebookEntry[] | undefined = this.library?.notebooks): string {
     const base = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .substring(0, 30);
 
+    const existing = notebooks ?? [];
+
     // Ensure uniqueness
     let id = base;
     let counter = 1;
-    while (this.library.notebooks.some((n) => n.id === id)) {
+    while (existing.some((n) => n.id === id)) {
       id = `${base}-${counter}`;
       counter++;
     }

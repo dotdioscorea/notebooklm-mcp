@@ -407,12 +407,13 @@ export class BrowserSession {
       // Wait for the response with streaming detection
       log.info(`  ⏳ Waiting for response (with streaming detection)...`);
       await sendProgress?.("Waiting for NotebookLM response (streaming detection active)...", 3, 5);
+      const debugWait = process.env.NOTEBOOKLM_DEBUG_CANDIDATES !== "0";
       const answer = await waitForLatestAnswer(page, {
         question,
         timeoutMs: 120000, // 2 minutes
         pollIntervalMs: 1000,
         ignoreTexts: existingResponses,
-        debug: false,
+        debug: debugWait,
       });
 
       if (!answer) {

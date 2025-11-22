@@ -72,7 +72,33 @@ const PLACEHOLDER_SNIPPETS = [
   "examining the specifics",
   "opening your notes",
   "consulting your sources",
+  // NotebookLM status bubbles observed in production
+  "checking your uploads",
+  "checking your files",
+  "loading from sources",
+  "loading from your sources",
+  "checking your sources",
+  "loading your sources",
+  "processing your sources",
+  "scanning the text",
+  "digging into details",
 ];
+
+// Short status messages that look like NotebookLM loading bubbles
+const STATUS_PREFIXES = [
+  "checking your",
+  "looking for",
+  "looking up",
+  "digging into",
+  "loading from",
+  "loading your",
+  "processing your",
+  "scanning",
+  "analyzing",
+  "gathering your",
+];
+
+const MIN_ANSWER_CHARS = 80;
 
 // ============================================================================
 // Helper Functions
@@ -91,12 +117,26 @@ function hashString(str: string): number {
   return hash;
 }
 
+const ZERO_WIDTH_CHARS = /[\u200b-\u200d\u2060\ufeff]/g;
+
+/**
+ * Normalise text for placeholder checks: lowercase, strip zero-width chars,
+ * and collapse whitespace so status bubbles with hidden spacing are caught.
+ */
+function normalizePlaceholderText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(ZERO_WIDTH_CHARS, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Check if text is a placeholder/loading message
  */
 function isPlaceholder(text: string): boolean {
-  const lower = text.toLowerCase();
-  return PLACEHOLDER_SNIPPETS.some((snippet) => lower.includes(snippet));
+  const normalized = normalizePlaceholderText(text);
+  return PLACEHOLDER_SNIPPETS.some((snippet) => normalized.includes(snippet));
 }
 
 // ============================================================================
@@ -244,10 +284,13 @@ export async function waitForLatestAnswer(
     if (candidate) {
       const normalized = candidate.trim();
       if (normalized) {
-        const lower = normalized.toLowerCase();
+        const cleaned = normalizePlaceholderText(normalized);
+        const statusLike =
+          isPlaceholder(cleaned) ||
+          STATUS_PREFIXES.some((prefix) => cleaned.startsWith(prefix));
 
-        // Check if it's a placeholder
-        if (isPlaceholder(lower)) {
+        // Skip status/loading bubbles
+        if (statusLike) {
           if (debug && pollCount % 5 === 0) {
             log.debug("🔍 [DEBUG] Found placeholder, continuing...");
           }
@@ -255,8 +298,19 @@ export async function waitForLatestAnswer(
           continue;
         }
 
+        // Ignore very short responses; keep waiting unless we're timing out
+        if (normalized.length < MIN_ANSWER_CHARS) {
+          if (debug && pollCount % 5 === 0) {
+            log.debug(
+              `🔍 [DEBUG] Short candidate (${normalized.length} chars), waiting for full answer`
+            );
+          }
+          await page.waitForTimeout(pollIntervalMs);
+          continue;
+        }
+
         // Check if it's the question echo
-        if (lower === sanitizedQuestion) {
+        if (cleaned === sanitizedQuestion) {
           if (debug) {
             log.debug("🔍 [DEBUG] Found question echo, ignoring");
           }
